@@ -15,7 +15,7 @@ import re
 
 import requests
 from databricks.sdk import WorkspaceClient
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, redirect, url_for
 
 import lakebase
 # from massive_client import MassiveClient
@@ -97,8 +97,8 @@ def handle_exception(err):
 
 @app.route("/")
 def index():
-    """Simple UI to submit a list of stock symbols to sync from Massive."""
-    return render_template("index.html")
+    """Redirect to the tickets list page."""
+    return redirect(url_for('list_tickets'))
 
 
 @app.route("/tickets", methods=["GET"])
