@@ -12,6 +12,7 @@ Deploy as a Databricks App using app.yaml.
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
 import requests
 from databricks.sdk import WorkspaceClient
@@ -43,11 +44,23 @@ def ensure_tickets_table():
             ticket_id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
             status TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 3,
             created_by TEXT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
     )
+    
+    # Add priority column if it doesn't exist (for existing tables)
+    try:
+        lakebase.run_write(
+            f"""
+            ALTER TABLE {TICKETS_TABLE_NAME} 
+            ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 3
+            """
+        )
+    except Exception:
+        pass  # Column might already exist or ALTER not supported
 
 
 def ensure_ticket_messages_table():
@@ -79,6 +92,63 @@ def _current_user_email() -> str:
     return _w.current_user.me().user_name
 
 
+def format_ticket_age(created_at):
+    """Format ticket age in human-readable format based on duration.
+    
+    Args:
+        created_at: datetime object (timezone-aware)
+    
+    Returns:
+        String with formatted age
+    """
+    # Ensure created_at is timezone-aware
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    
+    now = datetime.now(timezone.utc)
+    delta = now - created_at
+    
+    total_seconds = int(delta.total_seconds())
+    minutes = total_seconds // 60
+    hours = total_seconds // 3600
+    days = delta.days
+    
+    # Under 60 minutes: show in minutes
+    if minutes < 60:
+        return f"{minutes}m"
+    
+    # Under 24 hours: show in hours and minutes
+    elif hours < 24:
+        remaining_minutes = minutes % 60
+        return f"{hours}h {remaining_minutes}m"
+    
+    # Under 7 days: show in days and hours
+    elif days < 7:
+        remaining_hours = hours % 24
+        return f"{days}d {remaining_hours}h"
+    
+    # Under a month (30 days): show in weeks, days, and hours
+    elif days < 30:
+        weeks = days // 7
+        remaining_days = days % 7
+        remaining_hours = hours % 24
+        return f"{weeks}w {remaining_days}d {remaining_hours}h"
+    
+    # A year or more: show in years, months, days, and hours
+    else:
+        years = days // 365
+        remaining_days_after_years = days % 365
+        months = remaining_days_after_years // 30
+        remaining_days_after_months = remaining_days_after_years % 30
+        remaining_hours = hours % 24
+        
+        if years > 0:
+            return f"{years}y {months}mo {remaining_days_after_months}d {remaining_hours}h"
+        else:
+            # Just months (between 30 days and 1 year)
+            return f"{months}mo {remaining_days_after_months}d {remaining_hours}h"
+
+
 @app.route("/healthz")
 def healthz():
     return jsonify({"status": "ok"})
@@ -108,11 +178,15 @@ def list_tickets():
     
     tickets = lakebase.run_query(
         f"""
-        SELECT ticket_id, title, status, created_by, created_at
+        SELECT ticket_id, title, status, priority, created_by, created_at
         FROM {TICKETS_TABLE_NAME}
-        ORDER BY created_at DESC
+        ORDER BY priority ASC, created_at DESC
         """
     )
+    
+    # Add formatted age to each ticket
+    for ticket in tickets:
+        ticket['age'] = format_ticket_age(ticket['created_at'])
     
     return render_template("tickets_list.html", tickets=tickets)
 
@@ -127,188 +201,124 @@ def create_ticket():
     ensure_tickets_table()
     
     title = request.form.get("title", "").strip()
-    status = request.form.get("status", "").strip()
+    priority = request.form.get("priority", "3").strip()
     
     # Validation
     if not title:
         return render_template("create_ticket.html", error="Title is required"), 400
     
-    if not status:
-        return render_template("create_ticket.html", error="Status is required"), 400
-    
-    if status not in ["open", "in_progress", "pending", "resolved", "closed"]:
-        return render_template("create_ticket.html", error="Invalid status"), 400
+    # Validate priority is a valid integer between 1 and 5
+    try:
+        priority_int = int(priority)
+        if priority_int < 1 or priority_int > 5:
+            return render_template("create_ticket.html", error="Priority must be between 1 and 5"), 400
+    except ValueError:
+        return render_template("create_ticket.html", error="Invalid priority value"), 400
     
     # Get current user email
     email = _current_user_email()
     
-    # Insert ticket into database
-    result = lakebase.run_query(
+    # Insert ticket into database with default status "pending"
+    lakebase.run_write(
         f"""
-        INSERT INTO {TICKETS_TABLE_NAME} (title, status, created_by, created_at)
-        VALUES (%s, %s, %s, now())
-        RETURNING ticket_id
+        INSERT INTO {TICKETS_TABLE_NAME} (title, status, priority, created_by, created_at)
+        VALUES (%s, %s, %s, %s, now())
         """,
-        (title, status, email)
+        (title, "pending", priority_int, email)
     )
     
-    ticket_id = result[0]["ticket_id"] if result else None
+    # Redirect to tickets list page after successful creation
+    return redirect(url_for('list_tickets'))
+
+
+@app.route("/tickets/<int:ticket_id>", methods=["GET"])
+def view_ticket(ticket_id):
+    """View a single ticket with all its messages."""
+    ensure_tickets_table()
+    ensure_ticket_messages_table()
     
-    return render_template("create_ticket.html", success=True, ticket_id=ticket_id)
+    # Get ticket details
+    ticket_result = lakebase.run_query(
+        f"""
+        SELECT ticket_id, title, status, priority, created_by, created_at
+        FROM {TICKETS_TABLE_NAME}
+        WHERE ticket_id = %s
+        """,
+        (ticket_id,)
+    )
+    
+    if not ticket_result:
+        return "Ticket not found", 404
+    
+    ticket = ticket_result[0]
+    
+    # Get all messages for this ticket
+    messages = lakebase.run_query(
+        f"""
+        SELECT message_id, message_text, author, created_at
+        FROM {TICKET_MESSAGES_TABLE_NAME}
+        WHERE ticket_id = %s
+        ORDER BY created_at ASC
+        """,
+        (ticket_id,)
+    )
+    
+    return render_template("ticket_detail.html", ticket=ticket, messages=messages)
 
 
-# @app.route("/records")
-# def list_records():
-#     """Read records already synced into Lakebase."""
-#     limit = int(request.args.get("limit", 100))
-#     rows = lakebase.run_query(
-#         f"SELECT id, payload, synced_at FROM {TABLE_NAME} ORDER BY synced_at DESC LIMIT %s",
-#         (limit,),
-#     )
-#     return jsonify(rows)
+@app.route("/tickets/<int:ticket_id>/messages", methods=["POST"])
+def add_message(ticket_id):
+    """Add a message to a ticket."""
+    ensure_ticket_messages_table()
+    
+    message_text = request.form.get("message_text", "").strip()
+    
+    # Validation
+    if not message_text:
+        # Redirect back with error - for simplicity, we'll just redirect
+        return redirect(url_for('view_ticket', ticket_id=ticket_id))
+    
+    # Get current user email
+    email = _current_user_email()
+    
+    # Insert message into database
+    lakebase.run_write(
+        f"""
+        INSERT INTO {TICKET_MESSAGES_TABLE_NAME} (ticket_id, message_text, author, created_at)
+        VALUES (%s, %s, %s, now())
+        """,
+        (ticket_id, message_text, email)
+    )
+    
+    # Redirect back to ticket detail page
+    return redirect(url_for('view_ticket', ticket_id=ticket_id))
 
 
-# @app.route("/sync", methods=["POST"])
-# def sync_from_massive():
-#     """
-#     Pull data from the Massive API (paginated, potentially huge dataset) and
-#     upsert it into Lakebase in batches.
-#     """
-#     ensure_table()
-#     client = MassiveClient()
-#
-#     path = request.json.get("path", "/records") if request.is_json else "/records"
-#     batch_size = int(request.args.get("batch_size", 500))
-#
-#     batch = []
-#     total = 0
-#     for item in client.paginated_get(path):
-#         batch.append(item)
-#         if len(batch) >= batch_size:
-#             total += _upsert_batch(batch)
-#             batch = []
-#
-#     if batch:
-#         total += _upsert_batch(batch)
-#
-#     return jsonify({"synced": total})
-
-
-# @app.route("/watchlist", methods=["GET"])
-# def get_watchlist():
-#     """Return the current user's watchlist symbols, with their last known price."""
-#     ensure_watchlist_table()
-#     email = _current_user_email()
-#     rows = lakebase.run_query(
-#         f"SELECT symbol, email, latest_price, updated_at FROM {WATCHLIST_TABLE_NAME} "
-#         f"WHERE email = %s ORDER BY symbol ASC",
-#         (email,),
-#     )
-#     return jsonify(rows)
-
-
-# @app.route("/watchlist", methods=["POST"])
-# def add_to_watchlist():
-#     """
-#     Fetch the latest price for a single stock symbol from Massive using
-#     exactly ONE API call (see MassiveClient.get_latest_price), then add/
-#     update that symbol on the watchlist in Lakebase.
-#     """
-#     ensure_watchlist_table()
-#
-#     if request.is_json:
-#         symbol = request.json.get("symbol", "")
-#     else:
-#         symbol = request.form.get("symbol", "")
-#
-#     symbol = symbol.strip().upper() if isinstance(symbol, str) else ""
-#
-#     if not symbol or not _TICKER_RE.match(symbol):
-#         return jsonify({"error": f"Invalid ticker symbol: {symbol!r}"}), 400
-#
-#     client = MassiveClient()
-#     try:
-#         data = client.get_latest_price(symbol)  # <-- single API call, latest price only
-#     except requests.HTTPError:
-#         # Massive returns a 404/4xx for tickers it doesn't recognize.
-#         return jsonify({"error": f"Unknown ticker symbol: {symbol}"}), 400
-#
-#     price = _extract_latest_price(data)
-#     if price is None:
-#         # No usable price in the response (e.g. delisted/invalid ticker
-#         # that still 200s with an empty result set) - don't add it.
-#         return jsonify({"error": f"No price data available for ticker: {symbol}"}), 400
-#
-#     email = _current_user_email()
-#
-#     lakebase.run_write(
-#         f"""
-#         INSERT INTO {WATCHLIST_TABLE_NAME} (symbol, email, latest_price, updated_at)
-#         VALUES (%s, %s, %s, now())
-#         ON CONFLICT (symbol, email) DO UPDATE
-#             SET latest_price = EXCLUDED.latest_price,
-#                 updated_at = EXCLUDED.updated_at
-#         """,
-#         (symbol, email, price),
-#     )
-#
-#     return jsonify({"symbol": symbol, "email": email, "latest_price": price})
-
-
-# def _extract_latest_price(data: dict) -> float | None:
-#     """Pull the trade price out of the Massive 'previous close' response shape.
-#
-#     The /v2/aggs/ticker/{symbol}/prev endpoint returns "results" as a LIST
-#     containing a single aggregate bar (not a dict), e.g.:
-#         {"status": "OK", "resultsCount": 1, "results": [{"c": 148.845, ...}]}
-#     Previously this code treated "results" as a dict, so isinstance(results, dict)
-#     was always False for this endpoint's real shape and the price silently
-#     resolved to None. Unwrap the list here, and check "status"/"resultsCount"
-#     so invalid tickers (empty results) are detected instead of "succeeding"
-#     with a null price.
-#
-#     Adjust the key lookup here if the real Massive API returns a different
-#     field name for the traded/close price.
-#     """
-#     if not isinstance(data, dict):
-#         return None
-#     if data.get("status") not in (None, "OK") or data.get("resultsCount") == 0:
-#         return None
-#     results = data.get("results", data)
-#     if isinstance(results, list):
-#         results = results[0] if results else None
-#     if isinstance(results, dict):
-#         for key in ("c", "p", "price", "last_price", "vw"):
-#             if key in results:
-#                 return results[key]
-#     return None
-
-
-# def _upsert_batch(items: list[dict]) -> int:
-#     """Upsert a batch of Massive API items into Lakebase, one statement per row.
-#
-#     For very large batches, consider psycopg2.extras.execute_values for
-#     higher throughput instead of per-row execute calls.
-#     """
-#     import json as _json
-#
-#     count = 0
-#     with lakebase.get_connection() as conn:
-#         with conn.cursor() as cur:
-#             for item in items:
-#                 cur.execute(
-#                     f"""
-#                     INSERT INTO {TABLE_NAME} (id, payload, synced_at)
-#                     VALUES (%s, %s, now())
-#                     ON CONFLICT (id) DO UPDATE
-#                         SET payload = EXCLUDED.payload,
-#                             synced_at = EXCLUDED.synced_at
-#                     """,
-#                     (str(item.get("id")), _json.dumps(item)),
-#                 )
-#                 count += 1
-#             conn.commit()
-#     return count
+@app.route("/tickets/<int:ticket_id>/status", methods=["POST"])
+def update_ticket_status(ticket_id):
+    """Update the status of a ticket."""
+    ensure_tickets_table()
+    
+    new_status = request.form.get("status", "").strip()
+    
+    # Validate status is one of the allowed values
+    allowed_statuses = ["pending", "open", "in_progress", "resolved", "closed"]
+    if new_status not in allowed_statuses:
+        # Invalid status, just redirect back
+        return redirect(url_for('view_ticket', ticket_id=ticket_id))
+    
+    # Update ticket status in database
+    lakebase.run_write(
+        f"""
+        UPDATE {TICKETS_TABLE_NAME}
+        SET status = %s
+        WHERE ticket_id = %s
+        """,
+        (new_status, ticket_id)
+    )
+    
+    # Redirect back to ticket detail page
+    return redirect(url_for('view_ticket', ticket_id=ticket_id))
 
 
 if __name__ == '__main__':
