@@ -78,8 +78,19 @@
             color: #555;
         }
         
-        .tickets-table tr:hover {
-            background: #f8f9fa;
+        .tickets-table tbody tr {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .tickets-table tbody tr:hover {
+            background: #f0f4ff;
+        }
+        
+        .ticket-link {
+            text-decoration: none;
+            color: inherit;
+            display: table-row;
         }
         
         .status-badge {
@@ -116,6 +127,42 @@
             color: #757575;
         }
         
+        .priority-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            min-width: 60px;
+        }
+        
+        .priority-1 {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+        }
+        
+        .priority-2 {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        .priority-3 {
+            background: #fff9c4;
+            color: #f57f17;
+        }
+        
+        .priority-4 {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .priority-5 {
+            background: #f5f5f5;
+            color: #616161;
+        }
+        
         .no-tickets {
             text-align: center;
             padding: 60px 20px;
@@ -146,16 +193,23 @@
                 <tr>
                     <th>ID</th>
                     <th>Title</th>
+                    <th>Priority</th>
                     <th>Status</th>
                     <th>Created By</th>
                     <th>Created At</th>
+                    <th>Age</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ticket in tickets %}
-                <tr>
+                <tr onclick="window.location.href='/tickets/{{ ticket.ticket_id }}'" style="cursor: pointer;">
                     <td>#{{ ticket.ticket_id }}</td>
                     <td>{{ ticket.title }}</td>
+                    <td>
+                        <span class="priority-badge priority-{{ ticket.priority }}">
+                            P{{ ticket.priority }}
+                        </span>
+                    </td>
                     <td>
                         <span class="status-badge status-{{ ticket.status }}">
                             {{ ticket.status.replace('_', ' ') }}
@@ -163,6 +217,7 @@
                     </td>
                     <td>{{ ticket.created_by }}</td>
                     <td class="timestamp">{{ ticket.created_at }}</td>
+                    <td class="timestamp"><strong>{{ ticket.age }}</strong></td>
                 </tr>
                 {% endfor %}
             </tbody>
