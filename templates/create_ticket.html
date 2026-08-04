@@ -42,6 +42,20 @@
             font-size: 14px;
         }
         
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        
+        .info-box p {
+            color: #555;
+            font-size: 14px;
+            margin: 0;
+        }
+        
         .form-group {
             margin-bottom: 25px;
         }
@@ -69,6 +83,12 @@
         select:focus {
             outline: none;
             border-color: #667eea;
+        }
+        
+        .priority-help {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
         }
         
         .button-group {
@@ -115,12 +135,6 @@
             font-size: 14px;
         }
         
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
         .alert-error {
             background-color: #f8d7da;
             color: #721c24;
@@ -137,11 +151,9 @@
         <h1>Create New Ticket</h1>
         <p class="subtitle">Fill out the form below to create a new support ticket</p>
         
-        {% if success %}
-        <div class="alert alert-success">
-            ✓ Ticket created successfully! Ticket ID: {{ ticket_id }}
+        <div class="info-box">
+            <p>ℹ️ New tickets are automatically created with "Pending" status</p>
         </div>
-        {% endif %}
         
         {% if error %}
         <div class="alert alert-error">
@@ -163,15 +175,15 @@
             </div>
             
             <div class="form-group">
-                <label for="status">Status <span class="required">*</span></label>
-                <select id="status" name="status" required>
-                    <option value="">-- Select Status --</option>
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="pending">Pending</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
+                <label for="priority">Priority <span class="required">*</span></label>
+                <select id="priority" name="priority" required>
+                    <option value="1">1 - Critical (Most Severe)</option>
+                    <option value="2">2 - High</option>
+                    <option value="3" selected>3 - Medium</option>
+                    <option value="4">4 - Low</option>
+                    <option value="5">5 - Minimal (Least Severe)</option>
                 </select>
+                <p class="priority-help">Select the severity level of this ticket</p>
             </div>
             
             <div class="button-group">
