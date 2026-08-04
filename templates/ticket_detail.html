@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket #{{ ticket.ticket_id }} - {{ ticket.title }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .ticket-info h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .ticket-meta {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-badge {
+            text-transform: uppercase;
+        }
+        
+        .status-open { background: #e3f2fd; color: #1976d2; }
+        .status-in_progress { background: #fff3e0; color: #f57c00; }
+        .status-pending { background: #fce4ec; color: #c2185b; }
+        .status-resolved { background: #e8f5e9; color: #388e3c; }
+        .status-closed { background: #f5f5f5; color: #757575; }
+        
+        .priority-badge {
+            text-align: center;
+            min-width: 60px;
+        }
+        
+        .priority-1 { background: #ffebee; color: #c62828; border: 1px solid #ef5350; }
+        .priority-2 { background: #fff3e0; color: #e65100; }
+        .priority-3 { background: #fff9c4; color: #f57f17; }
+        .priority-4 { background: #e8f5e9; color: #2e7d32; }
+        .priority-5 { background: #f5f5f5; color: #616161; }
+        
+        .meta-item {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .meta-item strong {
+            color: #333;
+        }
+        
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+        
+        .back-link:hover {
+            color: #764ba2;
+        }
+        
+        .messages-section {
+            margin-top: 40px;
+        }
+        
+        .messages-section h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .message-author {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .message-time {
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .message-text {
+            color: #555;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        
+        .no-messages {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .add-message-section {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f0f4ff;
+            border-radius: 8px;
+        }
+        
+        .add-message-section h3 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .required {
+            color: #e74c3c;
+        }
+        
+        .status-change-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff9e6;
+            border-radius: 8px;
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .status-change-section h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .status-form {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .status-form .form-group {
+            flex: 1;
+            min-width: 200px;
+            margin-bottom: 0;
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn-update {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .btn-update:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(245, 158, 11, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="ticket-info">
+                <h1>Ticket #{{ ticket.ticket_id }}: {{ ticket.title }}</h1>
+                <div class="ticket-meta">
+                    <span class="badge priority-badge priority-{{ ticket.priority }}">
+                        P{{ ticket.priority }}
+                    </span>
+                    <span class="badge status-badge status-{{ ticket.status }}">
+                        {{ ticket.status.replace('_', ' ') }}
+                    </span>
+                    <span class="meta-item">
+                        <strong>Created by:</strong> {{ ticket.created_by }}
+                    </span>
+                    <span class="meta-item">
+                        <strong>Created:</strong> {{ ticket.created_at }}
+                    </span>
+                </div>
+            </div>
+            <a href="/tickets" class="back-link">← Back to Tickets</a>
+        </div>
+        
+        <div class="status-change-section">
+            <h3>⚙️ Change Ticket Status</h3>
+            <form method="POST" action="/tickets/{{ ticket.ticket_id }}/status" class="status-form">
+                <div class="form-group">
+                    <label for="status">New Status <span class="required">*</span></label>
+                    <select id="status" name="status" required>
+                        <option value="pending" {% if ticket.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Open</option>
+                        <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                        <option value="resolved" {% if ticket.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                        <option value="closed" {% if ticket.status == 'closed' %}selected{% endif %}>Closed</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-update">Update Status</button>
+            </form>
+        </div>
+        
+        <div class="messages-section">
+            <h2>Messages ({{ messages|length }})</h2>
+            
+            {% if messages %}
+                {% for message in messages %}
+                <div class="message">
+                    <div class="message-header">
+                        <span class="message-author">{{ message.author }}</span>
+                        <span class="message-time">{{ message.created_at }}</span>
+                    </div>
+                    <div class="message-text">{{ message.message_text }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-messages">
+                    <p>💬 No messages yet. Be the first to add a message!</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="add-message-section">
+            <h3>Add a Message</h3>
+            <form method="POST" action="/tickets/{{ ticket.ticket_id }}/messages">
+                <div class="form-group">
+                    <label for="message_text">Your Message <span class="required">*</span></label>
+                    <textarea 
+                        id="message_text" 
+                        name="message_text" 
+                        placeholder="Type your message here..."
+                        required
+                        maxlength="2000"
+                    ></textarea>
+                </div>
+                <button type="submit" class="btn-primary">Post Message</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
